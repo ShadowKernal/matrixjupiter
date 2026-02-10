@@ -4,7 +4,7 @@ WORKDIR /app
 
 # Copy the matrixjupiter folder
 COPY matrixjupiter/package*.json ./
-RUN npm ci
+RUN npm install
 
 COPY matrixjupiter ./
 
