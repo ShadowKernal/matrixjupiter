@@ -1,0 +1,11 @@
+[phases.install]
+# Coolify/Nixpacks defaults to `npm ci` (and may run with production omit settings),
+# which can fail on strict lockfile checks. Use a more tolerant install that still
+# includes dev deps required for `next build`.
+cmds = ["npm install --include=dev"]
+
+[phases.build]
+cmds = ["npm run build"]
+
+[start]
+cmd = "npm run start"
