@@ -1,25 +1,6 @@
 {
-  "buildCommand": "cd matrixjupiter && npm run build",
-  "outputDirectory": "matrixjupiter/.next",
+  "buildCommand": "npm install && npm run build",
+  "installCommand": "npm install",
   "framework": "nextjs",
-  "rewrites": [
-    {
-      "source": "/",
-      "destination": "/index.html"
-    },
-    {
-      "source": "/styles.css",
-      "destination": "/styles.css"
-    },
-    {
-      "source": "/script.js",
-      "destination": "/script.js"
-    }
-  ],
-  "routes": [
-    {
-      "src": "/(.*)",
-      "dest": "/$1"
-    }
-  ]
+  "outputDirectory": ".next"
 }
