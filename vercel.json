@@ -1,6 +1,7 @@
 {
-  "buildCommand": "npm install && npm run build",
-  "installCommand": "npm install",
+  "buildCommand": "cd matrixjupiter && npm install && npm run build",
+  "installCommand": "cd matrixjupiter && npm install",
+  "outputDirectory": "matrixjupiter/.next",
   "framework": "nextjs",
-  "outputDirectory": ".next"
+  "rootDirectory": "matrixjupiter"
 }
