@@ -10,6 +10,7 @@ pnpm-debug.log*
 out/
 build/
 dist/
+next-env.d.ts
 
 # Production
 *.log
@@ -41,3 +42,6 @@ desktop.ini
 *.pem
 .vercel
 .turbo
+
+# Legacy folder (old monorepo layout). Keep it out of git status if it exists locally.
+matrixjupiter/

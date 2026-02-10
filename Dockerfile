@@ -2,11 +2,11 @@ FROM node:22-alpine
 
 WORKDIR /app
 
-# Copy the matrixjupiter folder
-COPY matrixjupiter/package*.json ./
+# Copy dependency manifests first for better layer caching
+COPY package*.json ./
 RUN npm install
 
-COPY matrixjupiter ./
+COPY . ./
 
 # Build the Next.js app
 RUN npm run build
