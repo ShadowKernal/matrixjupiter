@@ -22,6 +22,19 @@ type HeroPlanetSceneProps = {
   progressRef: MutableRefObject<number>;
 };
 
+type PointerCaptureTarget = EventTarget & {
+  setPointerCapture: (pointerId: number) => void;
+  releasePointerCapture: (pointerId: number) => void;
+};
+
+function isPointerCaptureTarget(target: EventTarget | null): target is PointerCaptureTarget {
+  return (
+    !!target &&
+    typeof (target as PointerCaptureTarget).setPointerCapture === "function" &&
+    typeof (target as PointerCaptureTarget).releasePointerCapture === "function"
+  );
+}
+
 const rimVertexShader = `
 varying vec3 vNormal;
 varying vec3 vViewDir;
@@ -188,7 +201,10 @@ function ProceduralPlanet({ progressRef }: { progressRef: MutableRefObject<numbe
     isDraggingRef.current = true;
     lastPointerXRef.current = event.clientX;
     dragVelocityRef.current = 0;
-    event.target.setPointerCapture(event.pointerId);
+    const target = event.target;
+    if (isPointerCaptureTarget(target)) {
+      target.setPointerCapture(event.pointerId);
+    }
   };
 
   const onPointerMove = (event: ThreeEvent<PointerEvent>) => {
@@ -205,7 +221,10 @@ function ProceduralPlanet({ progressRef }: { progressRef: MutableRefObject<numbe
     if (!isDraggingRef.current) return;
     event.stopPropagation();
     isDraggingRef.current = false;
-    event.target.releasePointerCapture(event.pointerId);
+    const target = event.target;
+    if (isPointerCaptureTarget(target)) {
+      target.releasePointerCapture(event.pointerId);
+    }
   };
 
   useEffect(
