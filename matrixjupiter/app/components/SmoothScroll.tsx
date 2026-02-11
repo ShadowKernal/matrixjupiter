@@ -9,6 +9,7 @@ export default function SmoothScroll() {
             duration: 1.2,
             easing: (t) => Math.min(1, 1.001 - Math.pow(2, -10 * t)),
             smoothWheel: true,
+            smoothTouch: false,
         });
 
         function raf(time: number) {
@@ -17,6 +18,9 @@ export default function SmoothScroll() {
         }
 
         requestAnimationFrame(raf);
+
+        // Debug log
+        console.log("Lenis smooth scroll initialized");
 
         return () => {
             lenis.destroy();
