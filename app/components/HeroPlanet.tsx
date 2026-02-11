@@ -1,7 +1,7 @@
 "use client";
 
 import dynamic from "next/dynamic";
-import { RefObject, useEffect, useRef, useState } from "react";
+import { Component, ReactNode, RefObject, useEffect, useRef, useState } from "react";
 
 const HeroPlanetScene = dynamic(() => import("./HeroPlanetScene"), {
   ssr: false,
@@ -10,6 +10,32 @@ const HeroPlanetScene = dynamic(() => import("./HeroPlanetScene"), {
 type HeroPlanetProps = {
   heroRef: RefObject<HTMLElement | null>;
 };
+
+type PlanetSceneErrorBoundaryProps = {
+  children: ReactNode;
+};
+
+type PlanetSceneErrorBoundaryState = {
+  hasError: boolean;
+};
+
+class PlanetSceneErrorBoundary extends Component<
+  PlanetSceneErrorBoundaryProps,
+  PlanetSceneErrorBoundaryState
+> {
+  state: PlanetSceneErrorBoundaryState = { hasError: false };
+
+  static getDerivedStateFromError(): PlanetSceneErrorBoundaryState {
+    return { hasError: true };
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return <div className="hero-planet-fallback" aria-hidden="true" />;
+    }
+    return this.props.children;
+  }
+}
 
 const clamp = (value: number, min: number, max: number) =>
   Math.min(max, Math.max(min, value));
@@ -20,6 +46,8 @@ export default function HeroPlanet({ heroRef }: HeroPlanetProps) {
 
   const [prefersReducedMotion, setPrefersReducedMotion] = useState(false);
   const [isInView, setIsInView] = useState(true);
+  const [isPageVisible, setIsPageVisible] = useState(true);
+  const [dprRange, setDprRange] = useState<[number, number]>([1, 1.65]);
 
   useEffect(() => {
     const reducedMotionQuery = window.matchMedia("(prefers-reduced-motion: reduce)");
@@ -39,6 +67,36 @@ export default function HeroPlanet({ heroRef }: HeroPlanetProps) {
     return () => {
       detachReduced();
     };
+  }, []);
+
+  useEffect(() => {
+    const updateDprRange = () => {
+      const deviceDpr = window.devicePixelRatio || 1;
+      const viewportWidth = window.innerWidth;
+      const cpuThreads = navigator.hardwareConcurrency || 4;
+
+      let maxDpr = Math.min(deviceDpr, 1.85);
+      if (viewportWidth < 1100) maxDpr = Math.min(maxDpr, 1.55);
+      if (viewportWidth < 820) maxDpr = Math.min(maxDpr, 1.35);
+      if (cpuThreads <= 4) maxDpr = Math.min(maxDpr, 1.3);
+      if (prefersReducedMotion) maxDpr = Math.min(maxDpr, 1.2);
+
+      setDprRange([1, Math.max(1, maxDpr)]);
+    };
+
+    updateDprRange();
+    window.addEventListener("resize", updateDprRange);
+    return () => window.removeEventListener("resize", updateDprRange);
+  }, [prefersReducedMotion]);
+
+  useEffect(() => {
+    const onVisibilityChange = () => {
+      setIsPageVisible(!document.hidden);
+    };
+
+    onVisibilityChange();
+    document.addEventListener("visibilitychange", onVisibilityChange);
+    return () => document.removeEventListener("visibilitychange", onVisibilityChange);
   }, []);
 
   useEffect(() => {
@@ -68,10 +126,10 @@ export default function HeroPlanet({ heroRef }: HeroPlanetProps) {
 
     const applyProgress = (nextProgress: number) => {
       const fade = 1 - clamp((nextProgress - 0.68) / 0.32, 0, 1);
-      const shiftY = nextProgress * 72;
-      const shiftX = -nextProgress * 34;
+      const shiftY = nextProgress * (prefersReducedMotion ? 46 : 72);
+      const shiftX = -nextProgress * (prefersReducedMotion ? 20 : 34);
       const scale = 1 - nextProgress * 0.06;
-      const tilt = nextProgress * 6;
+      const tilt = nextProgress * (prefersReducedMotion ? 3 : 6);
       progressRef.current = nextProgress;
 
       layer.style.setProperty("--planet-progress", nextProgress.toFixed(4));
@@ -91,32 +149,40 @@ export default function HeroPlanet({ heroRef }: HeroPlanetProps) {
     updateFromRect();
 
     if (!isInView) return;
-
-    if (prefersReducedMotion) {
-      const onScroll = () => updateFromRect();
-      const onResize = () => updateFromRect();
-      window.addEventListener("scroll", onScroll, { passive: true });
-      window.addEventListener("resize", onResize);
-      return () => {
-        window.removeEventListener("scroll", onScroll);
-        window.removeEventListener("resize", onResize);
-      };
-    }
-
     let frame = 0;
-    const tick = () => {
-      updateFromRect();
-      frame = window.requestAnimationFrame(tick);
+    const schedule = () => {
+      if (frame) return;
+      frame = window.requestAnimationFrame(() => {
+        frame = 0;
+        updateFromRect();
+      });
     };
 
-    frame = window.requestAnimationFrame(tick);
-    return () => window.cancelAnimationFrame(frame);
+    const onScroll = () => schedule();
+    const onResize = () => schedule();
+    window.addEventListener("scroll", onScroll, { passive: true });
+    window.addEventListener("resize", onResize);
+
+    return () => {
+      if (frame) window.cancelAnimationFrame(frame);
+      window.removeEventListener("scroll", onScroll);
+      window.removeEventListener("resize", onResize);
+    };
   }, [heroRef, isInView, prefersReducedMotion]);
+
+  const isActive = isInView && isPageVisible;
 
   return (
     <div className="hero-planet-layer" ref={layerRef} aria-hidden="true">
       <div className="hero-planet-canvas">
-        <HeroPlanetScene progressRef={progressRef} />
+        <PlanetSceneErrorBoundary>
+          <HeroPlanetScene
+            progressRef={progressRef}
+            isActive={isActive}
+            prefersReducedMotion={prefersReducedMotion}
+            dprRange={dprRange}
+          />
+        </PlanetSceneErrorBoundary>
       </div>
     </div>
   );

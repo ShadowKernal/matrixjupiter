@@ -356,27 +356,47 @@ a {
   --planet-fade: 1;
   --planet-shift-y: 0px;
   --planet-shift-x: 0px;
+  --planet-base-shift-x: -140px;
   --planet-scale: 1;
   --planet-tilt: 0;
   position: absolute;
-  top: 50%;
-  right: clamp(58px, 9vw, 148px);
-  width: clamp(300px, 42vw, 620px);
+  top: 52%;
+  right: clamp(92px, 12vw, 196px);
+  width: clamp(225px, 31.5vw, 480px);
+  max-width: calc(100vw - 28px);
   aspect-ratio: 1 / 1;
   pointer-events: auto;
   z-index: 1;
   opacity: calc(0.72 * var(--planet-fade));
-  transform: translate3d(var(--planet-shift-x), calc(-50% + var(--planet-shift-y)), 0) scale(var(--planet-scale)) rotate(calc(var(--planet-tilt) * 1deg));
+  transform: translate3d(calc(var(--planet-base-shift-x) + var(--planet-shift-x)), calc(-50% + var(--planet-shift-y)), 0) scale(var(--planet-scale)) rotate(calc(var(--planet-tilt) * 1deg));
   filter: saturate(1.12) contrast(0.97) brightness(1);
   will-change: transform, opacity;
 }
 
+.hero-planet-layer::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  bottom: 9%;
+  width: 76%;
+  height: 20%;
+  transform: translateX(-50%);
+  pointer-events: none;
+  border-radius: 50%;
+  background: radial-gradient(ellipse at center, rgba(0, 0, 0, 0.42) 0%, rgba(0, 0, 0, 0.2) 34%, rgba(0, 0, 0, 0) 78%);
+  filter: blur(14px);
+  opacity: calc(0.7 * var(--planet-fade));
+  z-index: 0;
+}
+
 .hero-planet-canvas {
+  position: relative;
   width: 100%;
   height: 100%;
   pointer-events: auto;
   touch-action: none;
   cursor: grab;
+  z-index: 1;
 }
 
 .hero-planet-canvas canvas {
@@ -1337,9 +1357,10 @@ textarea.form-input {
   }
 
   .hero-planet-layer {
-    width: clamp(220px, 62vw, 320px);
-    right: -146px;
-    top: 46%;
+    --planet-base-shift-x: -72px;
+    width: clamp(165px, 46.5vw, 255px);
+    right: -24px;
+    top: 47%;
     opacity: calc(0.48 * var(--planet-fade));
     filter: saturate(1.02) contrast(1.03) brightness(1);
   }

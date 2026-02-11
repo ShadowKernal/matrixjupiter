@@ -5,6 +5,7 @@ import { MutableRefObject, useEffect, useMemo, useRef } from "react";
 import {
   ACESFilmicToneMapping,
   AdditiveBlending,
+  BackSide,
   CanvasTexture,
   Color,
   DirectionalLight,
@@ -16,11 +17,18 @@ import {
   SRGBColorSpace,
   ShaderMaterial,
   TextureLoader,
+  WebGLRenderer,
 } from "three";
 
 type HeroPlanetSceneProps = {
   progressRef: MutableRefObject<number>;
+  isActive: boolean;
+  prefersReducedMotion: boolean;
+  dprRange: [number, number];
 };
+
+type PlanetDetail = "high" | "balanced" | "low";
+const PLANET_RADIUS = 1.16;
 
 type PointerCaptureTarget = EventTarget & {
   setPointerCapture: (pointerId: number) => void;
@@ -58,6 +66,35 @@ void main() {
   float fresnel = pow(1.0 - max(dot(normalize(vNormal), normalize(vViewDir)), 0.0), 2.25);
   float pulse = 0.95 + 0.05 * sin(uTime * 1.2);
   float glow = fresnel * uIntensity * pulse;
+  gl_FragColor = vec4(uColor, glow);
+}
+`;
+
+const atmosphereVertexShader = `
+varying vec3 vWorldNormal;
+varying vec3 vWorldPosition;
+
+void main() {
+  vec4 worldPosition = modelMatrix * vec4(position, 1.0);
+  vWorldPosition = worldPosition.xyz;
+  vWorldNormal = normalize(mat3(modelMatrix) * normal);
+  gl_Position = projectionMatrix * viewMatrix * worldPosition;
+}
+`;
+
+const atmosphereFragmentShader = `
+uniform vec3 uColor;
+uniform float uIntensity;
+uniform float uTime;
+varying vec3 vWorldNormal;
+varying vec3 vWorldPosition;
+
+void main() {
+  vec3 normalDir = normalize(vWorldNormal);
+  vec3 viewDir = normalize(cameraPosition - vWorldPosition);
+  float fresnel = pow(1.0 - max(dot(normalDir, viewDir), 0.0), 3.4);
+  float wave = 0.93 + 0.07 * sin(vWorldNormal.y * 20.0 + uTime * 0.28);
+  float glow = fresnel * wave * uIntensity;
   gl_FragColor = vec4(uColor, glow);
 }
 `;
@@ -160,14 +197,25 @@ function createCloudAlphaTexture() {
   return texture;
 }
 
-function ProceduralPlanet({ progressRef }: { progressRef: MutableRefObject<number> }) {
+function ProceduralPlanet({
+  progressRef,
+  prefersReducedMotion,
+  detail,
+}: {
+  progressRef: MutableRefObject<number>;
+  prefersReducedMotion: boolean;
+  detail: PlanetDetail;
+}) {
   const coreRef = useRef<Mesh>(null);
   const cloudRef = useRef<Mesh>(null);
   const rimRef = useRef<Mesh>(null);
+  const atmosphereRef = useRef<Mesh>(null);
   const coreMaterialRef = useRef<MeshPhysicalMaterial>(null);
   const cloudMaterialRef = useRef<MeshPhysicalMaterial>(null);
   const rimMaterialRef = useRef<ShaderMaterial>(null);
+  const atmosphereMaterialRef = useRef<ShaderMaterial>(null);
   const spinRef = useRef(0);
+  const cloudSpinRef = useRef(0);
   const isDraggingRef = useRef(false);
   const lastPointerXRef = useRef(0);
   const dragOffsetRef = useRef(0);
@@ -191,6 +239,14 @@ function ProceduralPlanet({ progressRef }: { progressRef: MutableRefObject<numbe
     () => ({
       uColor: { value: new Color("#cfb28e") },
       uIntensity: { value: 0.05 },
+      uTime: { value: 0 },
+    }),
+    []
+  );
+  const atmosphereUniforms = useMemo(
+    () => ({
+      uColor: { value: new Color("#d5b48d") },
+      uIntensity: { value: 0.065 },
       uTime: { value: 0 },
     }),
     []
@@ -236,43 +292,72 @@ function ProceduralPlanet({ progressRef }: { progressRef: MutableRefObject<numbe
     [cloudAlphaMap, jupiterMap, reliefMap]
   );
 
-  useFrame((_, delta) => {
+  useFrame((state, delta) => {
     const core = coreRef.current;
     const cloud = cloudRef.current;
     const rim = rimRef.current;
+    const atmosphere = atmosphereRef.current;
     const coreMaterial = coreMaterialRef.current;
     const cloudMaterial = cloudMaterialRef.current;
     const rimMaterial = rimMaterialRef.current;
-    if (!core || !cloud || !rim || !coreMaterial || !cloudMaterial || !rimMaterial) return;
+    const atmosphereMaterial = atmosphereMaterialRef.current;
+    if (
+      !core ||
+      !cloud ||
+      !rim ||
+      !atmosphere ||
+      !coreMaterial ||
+      !cloudMaterial ||
+      !rimMaterial ||
+      !atmosphereMaterial
+    ) {
+      return;
+    }
 
     const progress = progressRef.current;
     const fade = 1 - MathUtils.clamp((progress - 0.68) / 0.32, 0, 1);
-    spinRef.current += delta * 0.25;
+    const pointerX = state.pointer.x;
+    const pointerY = state.pointer.y;
+    const parallaxX = pointerX * (prefersReducedMotion ? 0.02 : 0.056);
+    const parallaxY = pointerY * (prefersReducedMotion ? 0.012 : 0.03);
+    const tiltLift = pointerY * (prefersReducedMotion ? 0.014 : 0.045);
+    spinRef.current += delta * (prefersReducedMotion ? 0.09 : 0.25);
+    cloudSpinRef.current += delta * (prefersReducedMotion ? 0.035 : 0.08);
 
     if (!isDraggingRef.current) {
       dragOffsetRef.current += dragVelocityRef.current;
-      dragVelocityRef.current *= 0.92;
+      dragVelocityRef.current *= prefersReducedMotion ? 0.86 : 0.92;
     }
 
     const scrollRotation = progress * 3.1;
     const targetRotationY = spinRef.current + scrollRotation + dragOffsetRef.current;
-    core.rotation.y = MathUtils.lerp(core.rotation.y, targetRotationY, 0.09);
-    core.rotation.x = MathUtils.lerp(core.rotation.x, -0.34 + progress * 0.28, 0.08);
-    core.position.y = MathUtils.lerp(core.position.y, 0.08 - progress * 0.24, 0.08);
-    core.position.x = MathUtils.lerp(core.position.x, 0.01 - progress * 0.12, 0.08);
+    const rotationLerp = prefersReducedMotion ? 0.055 : 0.09;
+    const transformLerp = prefersReducedMotion ? 0.05 : 0.08;
+    core.rotation.y = MathUtils.lerp(core.rotation.y, targetRotationY, rotationLerp);
+    core.rotation.x = MathUtils.lerp(core.rotation.x, -0.34 + progress * 0.28 + tiltLift, transformLerp);
+    core.position.y = MathUtils.lerp(core.position.y, -0.02 - progress * 0.24 + parallaxY, transformLerp);
+    core.position.x = MathUtils.lerp(core.position.x, 0.01 - progress * 0.12 + parallaxX, transformLerp);
 
-    cloud.rotation.y = core.rotation.y * 1.22 + 0.1;
+    cloud.rotation.y = core.rotation.y * 1.18 + 0.1 + cloudSpinRef.current;
     cloud.rotation.x = core.rotation.x * 0.86;
     cloud.position.copy(core.position);
     rim.rotation.copy(core.rotation);
     rim.position.copy(core.position);
+    atmosphere.rotation.copy(core.rotation);
+    atmosphere.position.copy(core.position);
 
     cloudMaterial.opacity = 0.2 * fade;
     coreMaterial.emissiveIntensity = 0.09 + fade * 0.08;
     coreMaterial.clearcoat = 0.95 + Math.sin(spinRef.current * 0.5) * 0.05;
     rimMaterial.uniforms.uIntensity.value = 0.05 * fade;
     rimMaterial.uniforms.uTime.value += delta;
+    atmosphereMaterial.uniforms.uIntensity.value = (prefersReducedMotion ? 0.045 : 0.065) * fade;
+    atmosphereMaterial.uniforms.uTime.value += delta;
   });
+
+  const coreSegments = detail === "high" ? 128 : detail === "balanced" ? 104 : 84;
+  const cloudSegments = detail === "high" ? 96 : detail === "balanced" ? 76 : 60;
+  const rimSegments = detail === "high" ? 72 : detail === "balanced" ? 56 : 44;
 
   return (
     <group>
@@ -283,7 +368,7 @@ function ProceduralPlanet({ progressRef }: { progressRef: MutableRefObject<numbe
         onPointerUp={onPointerUp}
         onPointerOut={onPointerUp}
       >
-        <sphereGeometry args={[1, 128, 128]} />
+        <sphereGeometry args={[PLANET_RADIUS, coreSegments, coreSegments]} />
         <meshPhysicalMaterial
           ref={coreMaterialRef}
           color="#ffffff"
@@ -303,8 +388,8 @@ function ProceduralPlanet({ progressRef }: { progressRef: MutableRefObject<numbe
         />
       </mesh>
 
-      <mesh ref={cloudRef} scale={1.018}>
-        <sphereGeometry args={[1, 96, 96]} />
+      <mesh ref={cloudRef} scale={1.012}>
+        <sphereGeometry args={[PLANET_RADIUS, cloudSegments, cloudSegments]} />
         <meshPhysicalMaterial
           ref={cloudMaterialRef}
           color="#ffdcb3"
@@ -320,8 +405,22 @@ function ProceduralPlanet({ progressRef }: { progressRef: MutableRefObject<numbe
         />
       </mesh>
 
-      <mesh ref={rimRef} scale={1.012}>
-        <sphereGeometry args={[1, 72, 72]} />
+      <mesh ref={atmosphereRef} scale={1.028}>
+        <sphereGeometry args={[PLANET_RADIUS, rimSegments, rimSegments]} />
+        <shaderMaterial
+          ref={atmosphereMaterialRef}
+          uniforms={atmosphereUniforms}
+          vertexShader={atmosphereVertexShader}
+          fragmentShader={atmosphereFragmentShader}
+          side={BackSide}
+          transparent
+          blending={AdditiveBlending}
+          depthWrite={false}
+        />
+      </mesh>
+
+      <mesh ref={rimRef} scale={1.006}>
+        <sphereGeometry args={[PLANET_RADIUS, rimSegments, rimSegments]} />
         <shaderMaterial
           ref={rimMaterialRef}
           uniforms={rimUniforms}
@@ -366,20 +465,39 @@ function PlanetLights() {
   );
 }
 
-export default function HeroPlanetScene({ progressRef }: HeroPlanetSceneProps) {
+export default function HeroPlanetScene({
+  progressRef,
+  isActive,
+  prefersReducedMotion,
+  dprRange,
+}: HeroPlanetSceneProps) {
+  const detail: PlanetDetail =
+    dprRange[1] > 1.55 ? "high" : dprRange[1] > 1.28 ? "balanced" : "low";
+
   return (
     <Canvas
-      dpr={[1, 1.75]}
-      camera={{ position: [0, 0, 4.1], fov: 42 }}
-      gl={{ antialias: true, alpha: true, powerPreference: "high-performance" }}
+      dpr={dprRange}
+      camera={{ position: [0, 0, 4.1], fov: 38 }}
+      gl={(defaults) =>
+        new WebGLRenderer({
+          canvas: defaults.canvas as HTMLCanvasElement,
+          antialias: true,
+          alpha: true,
+          powerPreference: "high-performance",
+        })
+      }
       onCreated={({ gl }) => {
         gl.toneMapping = ACESFilmicToneMapping;
-        gl.toneMappingExposure = 1.22;
+        gl.toneMappingExposure = 1.14;
       }}
-      frameloop="always"
+      frameloop={isActive ? "always" : "demand"}
     >
       <PlanetLights />
-      <ProceduralPlanet progressRef={progressRef} />
+      <ProceduralPlanet
+        progressRef={progressRef}
+        prefersReducedMotion={prefersReducedMotion}
+        detail={detail}
+      />
     </Canvas>
   );
 }
