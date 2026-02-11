@@ -1,8 +1,10 @@
 "use client";
 
 import { useEffect, useRef } from "react";
+import HeroPlanet from "./HeroPlanet";
 
 export default function Hero() {
+    const heroRef = useRef<HTMLElement>(null);
     const statsRef = useRef<HTMLDivElement>(null);
 
     useEffect(() => {
@@ -38,14 +40,10 @@ export default function Hero() {
     }, []);
 
     return (
-        <header className="hero" id="hero">
+        <header className="hero" id="hero" ref={heroRef}>
             <div className="hero-grid-bg" />
+            <HeroPlanet heroRef={heroRef} />
             <div className="hero-content">
-                <div className="hero-eyebrow reveal">
-                    <span className="hero-eyebrow-dot" />
-                    Web Design Studio
-                </div>
-
                 <h1 className="hero-title">
                     <span className="text-reveal-line"><span>We build websites</span></span>
                     <span className="text-reveal-line" style={{ transitionDelay: "0.12s" }}>

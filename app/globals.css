@@ -39,7 +39,7 @@
 }
 
 html {
-  scroll-behavior: smooth;
+  scroll-behavior: auto;
   scrollbar-width: thin;
   scrollbar-color: #222 #050505;
 }
@@ -330,6 +330,15 @@ a {
   overflow: hidden;
 }
 
+.hero::after {
+  content: "";
+  position: absolute;
+  inset: -16% -10% -18% 48%;
+  pointer-events: none;
+  z-index: 0;
+  background: radial-gradient(circle at 72% 52%, rgba(18, 16, 14, 0.58) 0%, rgba(6, 6, 8, 0.35) 40%, transparent 76%);
+}
+
 .hero-grid-bg {
   position: absolute;
   inset: 0;
@@ -339,6 +348,119 @@ a {
   background-size: 80px 80px;
   mask-image: radial-gradient(ellipse 60% 60% at 50% 40%, black, transparent);
   pointer-events: none;
+  z-index: 0;
+}
+
+.hero-planet-layer {
+  --planet-progress: 0;
+  --planet-fade: 1;
+  --planet-shift-y: 0px;
+  --planet-shift-x: 0px;
+  --planet-scale: 1;
+  --planet-tilt: 0;
+  position: absolute;
+  top: 50%;
+  right: clamp(58px, 9vw, 148px);
+  width: clamp(300px, 42vw, 620px);
+  aspect-ratio: 1 / 1;
+  pointer-events: auto;
+  z-index: 1;
+  opacity: calc(0.72 * var(--planet-fade));
+  transform: translate3d(var(--planet-shift-x), calc(-50% + var(--planet-shift-y)), 0) scale(var(--planet-scale)) rotate(calc(var(--planet-tilt) * 1deg));
+  filter: saturate(1.12) contrast(0.97) brightness(1);
+  will-change: transform, opacity;
+}
+
+.hero-planet-canvas {
+  width: 100%;
+  height: 100%;
+  pointer-events: auto;
+  touch-action: none;
+  cursor: grab;
+}
+
+.hero-planet-canvas canvas {
+  display: block;
+  width: 100% !important;
+  height: 100% !important;
+}
+
+.hero-planet-fallback {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  border-radius: 50%;
+  transform: rotate(calc(var(--planet-progress) * 96deg + var(--planet-tilt) * 1deg));
+  animation: heroPlanetSpin 16s linear infinite, heroPlanetBands 22s linear infinite;
+  background-image:
+    radial-gradient(circle at 30% 24%, rgba(255, 249, 233, 0.54) 0%, rgba(255, 224, 184, 0.14) 22%, rgba(0, 0, 0, 0.44) 70%, rgba(0, 0, 0, 0.8) 100%),
+    url("/jupiter.jpg");
+  background-size: cover, 240% 100%;
+  background-position: center, 0% 50%;
+  background-blend-mode: screen, normal;
+  box-shadow:
+    inset -52px -36px 104px rgba(0, 0, 0, 0.6),
+    inset 26px 24px 72px rgba(255, 215, 172, 0.21),
+    0 0 120px rgba(201, 146, 101, 0.16);
+}
+
+.hero-planet-fallback::before {
+  content: "";
+  position: absolute;
+  inset: -2%;
+  border-radius: 50%;
+  background:
+    radial-gradient(ellipse at 30% 30%, rgba(255, 238, 208, 0.82) 0%, rgba(255, 209, 154, 0.34) 22%, rgba(255, 182, 126, 0.1) 38%, transparent 62%);
+  opacity: calc(0.96 * var(--planet-fade));
+  filter: blur(7px);
+  animation: heroPlanetSheen 10s ease-in-out infinite;
+  mix-blend-mode: screen;
+}
+
+.hero-planet-fallback::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  opacity: calc(0.74 * var(--planet-fade));
+  background:
+    radial-gradient(circle at 22% 20%, rgba(255, 255, 255, 0.22) 0%, rgba(255, 255, 255, 0.08) 13%, transparent 26%),
+    linear-gradient(118deg, rgba(0, 0, 0, 0) 18%, rgba(0, 0, 0, 0.2) 56%, rgba(0, 0, 0, 0.5) 100%);
+  mix-blend-mode: multiply;
+}
+
+@keyframes heroPlanetSpin {
+  from {
+    transform: rotate(calc(var(--planet-progress) * 96deg + var(--planet-tilt) * 1deg));
+  }
+
+  to {
+    transform: rotate(calc(var(--planet-progress) * 96deg + var(--planet-tilt) * 1deg + 360deg));
+  }
+}
+
+@keyframes heroPlanetSheen {
+  0%,
+  100% {
+    transform: translate3d(-5%, -2%, 0) scale(0.96);
+    opacity: calc(0.65 * var(--planet-fade));
+  }
+
+  50% {
+    transform: translate3d(6%, 4%, 0) scale(1.03);
+    opacity: calc(0.95 * var(--planet-fade));
+  }
+}
+
+@keyframes heroPlanetBands {
+  from {
+    background-position: center, 0% 50%;
+  }
+
+  to {
+    background-position: center, 100% 50%;
+  }
 }
 
 .hero-content {
@@ -393,7 +515,7 @@ a {
 
 .hero-desc {
   font-size: 1.1rem;
-  color: var(--text-secondary);
+  color: rgba(255, 255, 255, 0.68);
   max-width: 480px;
   line-height: 1.7;
   margin-bottom: 48px;
@@ -402,7 +524,7 @@ a {
 .hero-actions {
   display: flex;
   align-items: center;
-  gap: 20px;
+  gap: 14px;
   flex-wrap: wrap;
 }
 
@@ -470,6 +592,7 @@ a {
   display: flex;
   justify-content: space-between;
   align-items: flex-end;
+  z-index: 2;
 }
 
 .hero-stats {
@@ -1211,6 +1334,14 @@ textarea.form-input {
 
   .hero {
     padding: 120px 24px 120px;
+  }
+
+  .hero-planet-layer {
+    width: clamp(220px, 62vw, 320px);
+    right: -146px;
+    top: 46%;
+    opacity: calc(0.48 * var(--planet-fade));
+    filter: saturate(1.02) contrast(1.03) brightness(1);
   }
 
   .hero-bottom {
