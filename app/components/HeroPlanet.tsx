@@ -48,6 +48,8 @@ export default function HeroPlanet({ heroRef }: HeroPlanetProps) {
   const [isInView, setIsInView] = useState(true);
   const [isPageVisible, setIsPageVisible] = useState(true);
   const [dprRange, setDprRange] = useState<[number, number]>([1, 1.65]);
+  const [isSceneReady, setIsSceneReady] = useState(false);
+  const [isSceneVisible, setIsSceneVisible] = useState(false);
 
   useEffect(() => {
     const reducedMotionQuery = window.matchMedia("(prefers-reduced-motion: reduce)");
@@ -170,17 +172,40 @@ export default function HeroPlanet({ heroRef }: HeroPlanetProps) {
     };
   }, [heroRef, isInView, prefersReducedMotion]);
 
+  useEffect(() => {
+    if (!isSceneReady) return;
+
+    // Delay reveal by two frames to avoid occasional first-paint canvas flash.
+    let raf1 = 0;
+    let raf2 = 0;
+    raf1 = window.requestAnimationFrame(() => {
+      raf2 = window.requestAnimationFrame(() => {
+        setIsSceneVisible(true);
+      });
+    });
+
+    return () => {
+      if (raf1) window.cancelAnimationFrame(raf1);
+      if (raf2) window.cancelAnimationFrame(raf2);
+    };
+  }, [isSceneReady]);
+
   const isActive = isInView && isPageVisible;
 
   return (
     <div className="hero-planet-layer" ref={layerRef} aria-hidden="true">
-      <div className="hero-planet-canvas">
+      <div className={`hero-planet-mask${isSceneVisible ? " is-hidden" : ""}`} />
+      <div
+        className={`hero-planet-canvas${isSceneVisible ? " is-ready" : ""}`}
+        style={{ visibility: isSceneVisible ? "visible" : "hidden" }}
+      >
         <PlanetSceneErrorBoundary>
           <HeroPlanetScene
             progressRef={progressRef}
             isActive={isActive}
             prefersReducedMotion={prefersReducedMotion}
             dprRange={dprRange}
+            onReady={() => setIsSceneReady(true)}
           />
         </PlanetSceneErrorBoundary>
       </div>

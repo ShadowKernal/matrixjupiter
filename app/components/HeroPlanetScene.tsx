@@ -1,22 +1,21 @@
 "use client";
 
 import { Canvas, ThreeEvent, useFrame } from "@react-three/fiber";
-import { MutableRefObject, useEffect, useMemo, useRef } from "react";
+import { MutableRefObject, useEffect, useMemo, useRef, useState } from "react";
 import {
   ACESFilmicToneMapping,
   AdditiveBlending,
   BackSide,
   CanvasTexture,
   Color,
-  DirectionalLight,
   MathUtils,
   Mesh,
   MeshPhysicalMaterial,
-  PointLight,
   RepeatWrapping,
   SRGBColorSpace,
   ShaderMaterial,
   TextureLoader,
+  Vector3,
   WebGLRenderer,
 } from "three";
 
@@ -25,6 +24,7 @@ type HeroPlanetSceneProps = {
   isActive: boolean;
   prefersReducedMotion: boolean;
   dprRange: [number, number];
+  onReady: () => void;
 };
 
 type PlanetDetail = "high" | "balanced" | "low";
@@ -96,6 +96,39 @@ void main() {
   float wave = 0.93 + 0.07 * sin(vWorldNormal.y * 20.0 + uTime * 0.28);
   float glow = fresnel * wave * uIntensity;
   gl_FragColor = vec4(uColor, glow);
+}
+`;
+
+const terminatorVertexShader = `
+varying vec3 vWorldNormal;
+varying vec3 vWorldPosition;
+
+void main() {
+  vec4 worldPosition = modelMatrix * vec4(position, 1.0);
+  vWorldPosition = worldPosition.xyz;
+  vWorldNormal = normalize(mat3(modelMatrix) * normal);
+  gl_Position = projectionMatrix * viewMatrix * worldPosition;
+}
+`;
+
+const terminatorFragmentShader = `
+uniform vec3 uLightDir;
+uniform float uStrength;
+uniform float uSoftness;
+varying vec3 vWorldNormal;
+varying vec3 vWorldPosition;
+
+void main() {
+  vec3 normalDir = normalize(vWorldNormal);
+  vec3 lightDir = normalize(uLightDir);
+  float lit = dot(normalDir, lightDir);
+  float dayMask = smoothstep(-uSoftness, uSoftness * 1.8, lit);
+  float night = 1.0 - dayMask;
+
+  vec3 viewDir = normalize(cameraPosition - vWorldPosition);
+  float rimLift = pow(1.0 - max(dot(normalDir, viewDir), 0.0), 1.4) * 0.14;
+  float alpha = max((night - rimLift) * uStrength, 0.0);
+  gl_FragColor = vec4(vec3(0.0), alpha);
 }
 `;
 
@@ -201,17 +234,21 @@ function ProceduralPlanet({
   progressRef,
   prefersReducedMotion,
   detail,
+  onReady,
 }: {
   progressRef: MutableRefObject<number>;
   prefersReducedMotion: boolean;
   detail: PlanetDetail;
+  onReady: () => void;
 }) {
   const coreRef = useRef<Mesh>(null);
   const cloudRef = useRef<Mesh>(null);
+  const terminatorRef = useRef<Mesh>(null);
   const rimRef = useRef<Mesh>(null);
   const atmosphereRef = useRef<Mesh>(null);
   const coreMaterialRef = useRef<MeshPhysicalMaterial>(null);
   const cloudMaterialRef = useRef<MeshPhysicalMaterial>(null);
+  const terminatorMaterialRef = useRef<ShaderMaterial>(null);
   const rimMaterialRef = useRef<ShaderMaterial>(null);
   const atmosphereMaterialRef = useRef<ShaderMaterial>(null);
   const spinRef = useRef(0);
@@ -220,12 +257,22 @@ function ProceduralPlanet({
   const lastPointerXRef = useRef(0);
   const dragOffsetRef = useRef(0);
   const dragVelocityRef = useRef(0);
+  const [textureReady, setTextureReady] = useState(false);
+  const didNotifyReadyRef = useRef(false);
 
   const jupiterMap = useMemo(() => {
-    const texture = new TextureLoader().load("/jupiter.jpg", (loaded) => {
-      loaded.anisotropy = 8;
-      loaded.needsUpdate = true;
-    });
+    const texture = new TextureLoader().load(
+      "/jupiter.jpg",
+      (loaded) => {
+        loaded.anisotropy = 8;
+        loaded.needsUpdate = true;
+        setTextureReady(true);
+      },
+      undefined,
+      () => {
+        setTextureReady(true);
+      }
+    );
     texture.colorSpace = SRGBColorSpace;
     texture.wrapS = RepeatWrapping;
     texture.wrapT = RepeatWrapping;
@@ -248,6 +295,14 @@ function ProceduralPlanet({
       uColor: { value: new Color("#d5b48d") },
       uIntensity: { value: 0.065 },
       uTime: { value: 0 },
+    }),
+    []
+  );
+  const terminatorUniforms = useMemo(
+    () => ({
+      uLightDir: { value: new Vector3(0.73, 0.43, 0.53).normalize() },
+      uStrength: { value: 0.62 },
+      uSoftness: { value: 0.24 },
     }),
     []
   );
@@ -295,24 +350,29 @@ function ProceduralPlanet({
   useFrame((state, delta) => {
     const core = coreRef.current;
     const cloud = cloudRef.current;
+    const terminator = terminatorRef.current;
     const rim = rimRef.current;
     const atmosphere = atmosphereRef.current;
     const coreMaterial = coreMaterialRef.current;
     const cloudMaterial = cloudMaterialRef.current;
+    const terminatorMaterial = terminatorMaterialRef.current;
     const rimMaterial = rimMaterialRef.current;
     const atmosphereMaterial = atmosphereMaterialRef.current;
     if (
       !core ||
       !cloud ||
+      !terminator ||
       !rim ||
       !atmosphere ||
       !coreMaterial ||
       !cloudMaterial ||
+      !terminatorMaterial ||
       !rimMaterial ||
       !atmosphereMaterial
     ) {
       return;
     }
+    if (!textureReady) return;
 
     const progress = progressRef.current;
     const fade = 1 - MathUtils.clamp((progress - 0.68) / 0.32, 0, 1);
@@ -341,18 +401,27 @@ function ProceduralPlanet({
     cloud.rotation.y = core.rotation.y * 1.18 + 0.1 + cloudSpinRef.current;
     cloud.rotation.x = core.rotation.x * 0.86;
     cloud.position.copy(core.position);
+    terminator.rotation.copy(core.rotation);
+    terminator.position.copy(core.position);
     rim.rotation.copy(core.rotation);
     rim.position.copy(core.position);
     atmosphere.rotation.copy(core.rotation);
     atmosphere.position.copy(core.position);
 
-    cloudMaterial.opacity = 0.2 * fade;
-    coreMaterial.emissiveIntensity = 0.09 + fade * 0.08;
-    coreMaterial.clearcoat = 0.95 + Math.sin(spinRef.current * 0.5) * 0.05;
-    rimMaterial.uniforms.uIntensity.value = 0.05 * fade;
+    cloudMaterial.opacity = 0.19 * fade;
+    coreMaterial.emissiveIntensity = 0.01 + fade * 0.015;
+    coreMaterial.clearcoat = 0.26 + Math.sin(spinRef.current * 0.5) * 0.02;
+    terminatorMaterial.uniforms.uStrength.value = (prefersReducedMotion ? 0.5 : 0.62) * fade;
+    rimMaterial.uniforms.uIntensity.value = 0.044 * fade;
     rimMaterial.uniforms.uTime.value += delta;
-    atmosphereMaterial.uniforms.uIntensity.value = (prefersReducedMotion ? 0.045 : 0.065) * fade;
+    atmosphereMaterial.uniforms.uIntensity.value = (prefersReducedMotion ? 0.04 : 0.056) * fade;
     atmosphereMaterial.uniforms.uTime.value += delta;
+
+    // Expose the canvas only after at least one real rendered frame with ready textures.
+    if (!didNotifyReadyRef.current) {
+      didNotifyReadyRef.current = true;
+      window.requestAnimationFrame(() => onReady());
+    }
   });
 
   const coreSegments = detail === "high" ? 128 : detail === "balanced" ? 104 : 84;
@@ -360,7 +429,7 @@ function ProceduralPlanet({
   const rimSegments = detail === "high" ? 72 : detail === "balanced" ? 56 : 44;
 
   return (
-    <group>
+    <group visible={textureReady}>
       <mesh
         ref={coreRef}
         onPointerDown={onPointerDown}
@@ -372,19 +441,19 @@ function ProceduralPlanet({
         <meshPhysicalMaterial
           ref={coreMaterialRef}
           color="#ffffff"
-          metalness={0.03}
-          roughness={0.58}
-          clearcoat={0.95}
-          clearcoatRoughness={0.16}
-          reflectivity={1}
-          sheen={0.68}
-          sheenColor="#ffd4a8"
-          sheenRoughness={0.38}
-          emissive="#2a170c"
-          emissiveIntensity={0.09}
+          metalness={0}
+          roughness={0.78}
+          clearcoat={0.26}
+          clearcoatRoughness={0.42}
+          reflectivity={0.44}
+          sheen={0.12}
+          sheenColor="#ffd9b0"
+          sheenRoughness={0.58}
+          emissive="#1f130b"
+          emissiveIntensity={0.01}
           map={jupiterMap}
           bumpMap={reliefMap ?? jupiterMap}
-          bumpScale={0.046}
+          bumpScale={0.072}
         />
       </mesh>
 
@@ -401,6 +470,18 @@ function ProceduralPlanet({
           clearcoat={1}
           clearcoatRoughness={0.18}
           blending={AdditiveBlending}
+          depthWrite={false}
+        />
+      </mesh>
+
+      <mesh ref={terminatorRef} scale={1.004}>
+        <sphereGeometry args={[PLANET_RADIUS, rimSegments, rimSegments]} />
+        <shaderMaterial
+          ref={terminatorMaterialRef}
+          uniforms={terminatorUniforms}
+          vertexShader={terminatorVertexShader}
+          fragmentShader={terminatorFragmentShader}
+          transparent
           depthWrite={false}
         />
       </mesh>
@@ -436,31 +517,13 @@ function ProceduralPlanet({
 }
 
 function PlanetLights() {
-  const keyRef = useRef<DirectionalLight>(null);
-  const sparkleRef = useRef<PointLight>(null);
-  const timeRef = useRef(0);
-
-  useFrame((_, delta) => {
-    timeRef.current += delta * 0.55;
-    if (keyRef.current) {
-      keyRef.current.position.x = 2.7 + Math.cos(timeRef.current) * 0.38;
-      keyRef.current.position.y = 1.8 + Math.sin(timeRef.current * 0.8) * 0.24;
-      keyRef.current.intensity = 1.28 + Math.sin(timeRef.current * 0.9) * 0.08;
-    }
-    if (sparkleRef.current) {
-      sparkleRef.current.position.x = 1.2 + Math.sin(timeRef.current * 1.35) * 0.42;
-      sparkleRef.current.position.y = 0.9 + Math.cos(timeRef.current * 1.15) * 0.34;
-      sparkleRef.current.intensity = 0.8 + Math.sin(timeRef.current * 1.6) * 0.14;
-    }
-  });
-
   return (
     <>
-      <ambientLight intensity={0.56} color="#fff3e3" />
-      <hemisphereLight intensity={0.42} color="#ffe7cb" groundColor="#4a2d1c" />
-      <directionalLight ref={keyRef} position={[2.8, 1.9, 2.6]} intensity={1.3} color="#ffe4c5" />
-      <pointLight ref={sparkleRef} position={[1.2, 0.8, 2.2]} intensity={0.82} color="#fff7e9" />
-      <directionalLight position={[-2.5, -1.2, -2]} intensity={0.44} color="#c58a5f" />
+      <ambientLight intensity={0.17} color="#ffeedd" />
+      <hemisphereLight intensity={0.14} color="#ffe2bf" groundColor="#21120a" />
+      <directionalLight position={[2.9, 1.7, 2.1]} intensity={1.72} color="#ffe2bf" />
+      <pointLight position={[1.4, 0.95, 2.25]} intensity={0.26} color="#fff8eb" />
+      <directionalLight position={[-2.1, 0.42, -1.8]} intensity={0.21} color="#a16f4f" />
     </>
   );
 }
@@ -470,6 +533,7 @@ export default function HeroPlanetScene({
   isActive,
   prefersReducedMotion,
   dprRange,
+  onReady,
 }: HeroPlanetSceneProps) {
   const detail: PlanetDetail =
     dprRange[1] > 1.55 ? "high" : dprRange[1] > 1.28 ? "balanced" : "low";
@@ -478,17 +542,20 @@ export default function HeroPlanetScene({
     <Canvas
       dpr={dprRange}
       camera={{ position: [0, 0, 4.1], fov: 38 }}
+      style={{ background: "transparent", display: "block" }}
       gl={(defaults) =>
         new WebGLRenderer({
           canvas: defaults.canvas as HTMLCanvasElement,
           antialias: true,
           alpha: true,
+          premultipliedAlpha: false,
           powerPreference: "high-performance",
         })
       }
       onCreated={({ gl }) => {
         gl.toneMapping = ACESFilmicToneMapping;
         gl.toneMappingExposure = 1.14;
+        gl.setClearColor(0x000000, 0);
       }}
       frameloop={isActive ? "always" : "demand"}
     >
@@ -497,6 +564,7 @@ export default function HeroPlanetScene({
         progressRef={progressRef}
         prefersReducedMotion={prefersReducedMotion}
         detail={detail}
+        onReady={onReady}
       />
     </Canvas>
   );
