@@ -1,10 +1,27 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { MouseEvent, useEffect, useRef, useState } from "react";
 
 export default function Navbar() {
     const [scrolled, setScrolled] = useState(false);
     const [open, setOpen] = useState(false);
+    const lockScrollYRef = useRef(0);
+    const pendingHashRef = useRef<string | null>(null);
+
+    const isMobile = () => window.innerWidth <= 768;
+    const isReducedMotion = () =>
+        window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    const scrollToHash = (hash: string) => {
+        const target = document.querySelector<HTMLElement>(hash);
+        if (!target) return;
+        target.scrollIntoView({
+            behavior: isReducedMotion() ? "auto" : "smooth",
+            block: "start",
+        });
+        if (window.location.hash !== hash) {
+            window.history.pushState(null, "", hash);
+        }
+    };
 
     useEffect(() => {
         const onScroll = () => setScrolled(window.scrollY > 50);
@@ -23,11 +40,11 @@ export default function Navbar() {
     }, []);
 
     useEffect(() => {
-        if (!open || window.innerWidth > 768) return;
+        if (!open || !isMobile()) return;
 
-        const scrollY = window.scrollY;
+        lockScrollYRef.current = window.scrollY;
         document.body.style.position = "fixed";
-        document.body.style.top = `-${scrollY}px`;
+        document.body.style.top = `-${lockScrollYRef.current}px`;
         document.body.style.left = "0";
         document.body.style.right = "0";
         document.body.style.width = "100%";
@@ -40,11 +57,27 @@ export default function Navbar() {
             document.body.style.right = "";
             document.body.style.width = "";
             document.body.style.overflow = "";
-            window.scrollTo(0, scrollY);
+
+            const pendingHash = pendingHashRef.current;
+            pendingHashRef.current = null;
+            if (pendingHash) {
+                scrollToHash(pendingHash);
+            } else {
+                window.scrollTo(0, lockScrollYRef.current);
+            }
         };
     }, [open]);
 
     const close = () => setOpen(false);
+    const onNavClick = (hash: string) => (event: MouseEvent<HTMLAnchorElement>) => {
+        if (!open || !isMobile()) {
+            close();
+            return;
+        }
+        event.preventDefault();
+        pendingHashRef.current = hash;
+        setOpen(false);
+    };
 
     return (
         <nav className={`navbar${scrolled ? " scrolled" : ""}${open ? " menu-open" : ""}`}>
@@ -58,11 +91,11 @@ export default function Navbar() {
                     </a>
 
                     <ul className={`nav-links${open ? " open" : ""}`}>
-                        <li><a href="#services" onClick={close}>Services</a></li>
-                        <li><a href="#work" onClick={close}>Work</a></li>
-                        <li><a href="#about" onClick={close}>About</a></li>
-                        <li><a href="#process" onClick={close}>Process</a></li>
-                        <li><a href="#contact" className="nav-cta-link" onClick={close}>Let&apos;s Talk</a></li>
+                        <li><a href="#services" onClick={onNavClick("#services")}>Services</a></li>
+                        <li><a href="#work" onClick={onNavClick("#work")}>Work</a></li>
+                        <li><a href="#about" onClick={onNavClick("#about")}>About</a></li>
+                        <li><a href="#process" onClick={onNavClick("#process")}>Process</a></li>
+                        <li><a href="#contact" className="nav-cta-link" onClick={onNavClick("#contact")}>Let&apos;s Talk</a></li>
                     </ul>
 
                     <button
