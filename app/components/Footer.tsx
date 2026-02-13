@@ -1,12 +1,14 @@
+import Image from "next/image";
+
 export default function Footer() {
     return (
-        <footer className="site-footer">
+        <footer id="footer" className="site-footer">
             <div className="container">
                 <div className="footer-grid">
                     <div>
                         <a href="#" className="nav-logo" style={{ marginBottom: 0 }}>
                             <div className="logo-mark">
-                                <span /><span /><span /><span />
+                                <Image src="/logo.png" alt="MatrixJupiter logo" width={32} height={32} className="logo-mark-img" />
                             </div>
                             MatrixJupiter
                         </a>

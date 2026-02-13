@@ -46,7 +46,7 @@ export default function Testimonials() {
     }, []);
 
     return (
-        <section className="testimonials-section">
+        <section id="testimonials" className="testimonials-section">
             <div className="container">
                 <div className="testimonials-header reveal">
                     <div className="section-label">Testimonials</div>

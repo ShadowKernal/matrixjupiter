@@ -85,7 +85,7 @@ export default function Navbar() {
                 <div className="nav-inner">
                     <a href="#" className="nav-logo">
                         <div className="logo-mark">
-                            <span /><span /><span /><span />
+                            <img src="/logo.png" alt="MatrixJupiter logo" className="logo-mark-img" />
                         </div>
                         MatrixJupiter
                     </a>

@@ -1,15 +1,11 @@
 "use client";
 
 import dynamic from "next/dynamic";
-import { Component, ReactNode, RefObject, useEffect, useRef, useState } from "react";
+import { Component, ReactNode, useEffect, useRef, useState } from "react";
 
 const HeroPlanetScene = dynamic(() => import("./HeroPlanetScene"), {
   ssr: false,
 });
-
-type HeroPlanetProps = {
-  heroRef: RefObject<HTMLElement | null>;
-};
 
 type PlanetSceneErrorBoundaryProps = {
   children: ReactNode;
@@ -40,12 +36,146 @@ class PlanetSceneErrorBoundary extends Component<
 const clamp = (value: number, min: number, max: number) =>
   Math.min(max, Math.max(min, value));
 
-export default function HeroPlanet({ heroRef }: HeroPlanetProps) {
+const mix = (from: number, to: number, amount: number) => from + (to - from) * amount;
+
+type PlanetSectionKeyframe = {
+  id: string;
+  shiftY: number;
+  shiftX: number;
+  scale: number;
+  tilt: number;
+  sceneProgress: number;
+  opacity: number;
+};
+
+type PlanetFrame = Omit<PlanetSectionKeyframe, "id">;
+
+type ResolvedSectionAnchor = {
+  top: number;
+  frame: PlanetSectionKeyframe;
+};
+
+const desktopSectionTimeline: PlanetSectionKeyframe[] = [
+  { id: "hero", shiftY: 0, shiftX: 0, scale: 1, tilt: 0, sceneProgress: 0.02, opacity: 1 },
+  { id: "services", shiftY: 170, shiftX: 80, scale: 0.93, tilt: 7, sceneProgress: 0.22, opacity: 0.9 },
+  { id: "work", shiftY: 340, shiftX: 150, scale: 0.86, tilt: 11, sceneProgress: 0.4, opacity: 0.76 },
+  { id: "about", shiftY: 530, shiftX: 220, scale: 0.79, tilt: 14, sceneProgress: 0.58, opacity: 0.62 },
+  { id: "process", shiftY: 710, shiftX: 280, scale: 0.73, tilt: 17, sceneProgress: 0.74, opacity: 0.48 },
+  { id: "testimonials", shiftY: 890, shiftX: 330, scale: 0.69, tilt: 19, sceneProgress: 0.87, opacity: 0.36 },
+  { id: "contact", shiftY: 1040, shiftX: 370, scale: 0.65, tilt: 21, sceneProgress: 0.95, opacity: 0.24 },
+  { id: "footer", shiftY: 1160, shiftX: 410, scale: 0.62, tilt: 23, sceneProgress: 1, opacity: 0.12 },
+];
+
+const reducedSectionTimeline: PlanetSectionKeyframe[] = [
+  { id: "hero", shiftY: 0, shiftX: 0, scale: 1, tilt: 0, sceneProgress: 0.02, opacity: 1 },
+  { id: "services", shiftY: 90, shiftX: 42, scale: 0.96, tilt: 4, sceneProgress: 0.22, opacity: 0.92 },
+  { id: "work", shiftY: 186, shiftX: 80, scale: 0.91, tilt: 7, sceneProgress: 0.4, opacity: 0.82 },
+  { id: "about", shiftY: 282, shiftX: 116, scale: 0.87, tilt: 10, sceneProgress: 0.58, opacity: 0.7 },
+  { id: "process", shiftY: 374, shiftX: 148, scale: 0.84, tilt: 12, sceneProgress: 0.74, opacity: 0.58 },
+  { id: "testimonials", shiftY: 462, shiftX: 174, scale: 0.81, tilt: 14, sceneProgress: 0.87, opacity: 0.44 },
+  { id: "contact", shiftY: 540, shiftX: 194, scale: 0.78, tilt: 15, sceneProgress: 0.95, opacity: 0.32 },
+  { id: "footer", shiftY: 606, shiftX: 210, scale: 0.75, tilt: 16, sceneProgress: 1, opacity: 0.2 },
+];
+
+const toFrame = (frame: PlanetSectionKeyframe): PlanetFrame => ({
+  shiftY: frame.shiftY,
+  shiftX: frame.shiftX,
+  scale: frame.scale,
+  tilt: frame.tilt,
+  sceneProgress: frame.sceneProgress,
+  opacity: frame.opacity,
+});
+
+const interpolateFrames = (
+  from: PlanetSectionKeyframe,
+  to: PlanetSectionKeyframe,
+  amount: number
+): PlanetFrame => ({
+  shiftY: mix(from.shiftY, to.shiftY, amount),
+  shiftX: mix(from.shiftX, to.shiftX, amount),
+  scale: mix(from.scale, to.scale, amount),
+  tilt: mix(from.tilt, to.tilt, amount),
+  sceneProgress: mix(from.sceneProgress, to.sceneProgress, amount),
+  opacity: mix(from.opacity, to.opacity, amount),
+});
+
+const resolveSectionAnchors = (
+  timeline: PlanetSectionKeyframe[]
+): ResolvedSectionAnchor[] =>
+  timeline
+    .map((frame) => {
+      const element = document.getElementById(frame.id);
+      if (!element) return null;
+      return {
+        top: Math.max(element.getBoundingClientRect().top + window.scrollY, 0),
+        frame,
+      };
+    })
+    .filter((anchor): anchor is ResolvedSectionAnchor => !!anchor)
+    .sort((a, b) => a.top - b.top);
+
+const frameFromSectionAnchors = (
+  scrollY: number,
+  anchors: ResolvedSectionAnchor[],
+  timeline: PlanetSectionKeyframe[]
+): PlanetFrame => {
+  if (!anchors.length) {
+    const fallback = timeline[0];
+    if (!fallback) {
+      return {
+        shiftY: 0,
+        shiftX: 0,
+        scale: 1,
+        tilt: 0,
+        sceneProgress: 0,
+        opacity: 1,
+      };
+    }
+    return toFrame(fallback);
+  }
+
+  if (anchors.length === 1) {
+    return toFrame(anchors[0].frame);
+  }
+
+  const first = anchors[0];
+  const last = anchors[anchors.length - 1];
+  if (!first || !last) {
+    return {
+      shiftY: 0,
+      shiftX: 0,
+      scale: 1,
+      tilt: 0,
+      sceneProgress: 0,
+      opacity: 1,
+    };
+  }
+
+  if (scrollY <= first.top) {
+    return toFrame(first.frame);
+  }
+
+  if (scrollY >= last.top) {
+    return toFrame(last.frame);
+  }
+
+  for (let index = 0; index < anchors.length - 1; index += 1) {
+    const start = anchors[index];
+    const end = anchors[index + 1];
+    if (!start || !end || scrollY > end.top) continue;
+
+    const amount = clamp((scrollY - start.top) / Math.max(end.top - start.top, 1), 0, 1);
+    return interpolateFrames(start.frame, end.frame, amount);
+  }
+
+  return toFrame(last.frame);
+};
+
+export default function HeroPlanet() {
   const layerRef = useRef<HTMLDivElement>(null);
   const progressRef = useRef(0);
 
   const [prefersReducedMotion, setPrefersReducedMotion] = useState(false);
-  const [isInView, setIsInView] = useState(true);
   const [isPageVisible, setIsPageVisible] = useState(true);
   const [dprRange, setDprRange] = useState<[number, number]>([1, 1.65]);
   const [isSceneReady, setIsSceneReady] = useState(false);
@@ -102,61 +232,41 @@ export default function HeroPlanet({ heroRef }: HeroPlanetProps) {
   }, []);
 
   useEffect(() => {
-    const hero = heroRef.current;
-    if (!hero) return;
-
-    const observer = new IntersectionObserver(
-      (entries) => {
-        const [entry] = entries;
-        if (!entry) return;
-        setIsInView(entry.isIntersecting);
-      },
-      {
-        threshold: 0,
-        rootMargin: "200px 0px 200px 0px",
-      }
-    );
-
-    observer.observe(hero);
-    return () => observer.disconnect();
-  }, [heroRef]);
-
-  useEffect(() => {
-    const hero = heroRef.current;
     const layer = layerRef.current;
-    if (!hero || !layer) return;
+    if (!layer) return;
 
-    const applyProgress = (nextProgress: number) => {
-      const fade = 1 - clamp((nextProgress - 0.68) / 0.32, 0, 1);
-      const shiftY = nextProgress * (prefersReducedMotion ? 46 : 72);
-      const shiftX = -nextProgress * (prefersReducedMotion ? 20 : 34);
-      const scale = 1 - nextProgress * 0.06;
-      const tilt = nextProgress * (prefersReducedMotion ? 3 : 6);
-      progressRef.current = nextProgress;
+    const sectionTimeline = prefersReducedMotion ? reducedSectionTimeline : desktopSectionTimeline;
 
-      layer.style.setProperty("--planet-progress", nextProgress.toFixed(4));
-      layer.style.setProperty("--planet-fade", fade.toFixed(4));
-      layer.style.setProperty("--planet-shift-y", `${shiftY.toFixed(2)}px`);
-      layer.style.setProperty("--planet-shift-x", `${shiftX.toFixed(2)}px`);
-      layer.style.setProperty("--planet-scale", scale.toFixed(4));
-      layer.style.setProperty("--planet-tilt", tilt.toFixed(2));
+    const applyFrame = (frameData: PlanetFrame) => {
+      progressRef.current = frameData.sceneProgress;
+      layer.style.setProperty("--planet-progress", frameData.sceneProgress.toFixed(4));
+      layer.style.setProperty("--planet-fade", "1");
+      layer.style.setProperty("--planet-shift-y", `${frameData.shiftY.toFixed(2)}px`);
+      layer.style.setProperty("--planet-shift-x", `${frameData.shiftX.toFixed(2)}px`);
+      layer.style.setProperty("--planet-scale", frameData.scale.toFixed(4));
+      layer.style.setProperty("--planet-tilt", frameData.tilt.toFixed(2));
+      layer.style.setProperty("--planet-layer-z", "1");
+      layer.style.setProperty("--planet-layer-opacity", "0.78");
     };
 
-    const updateFromRect = () => {
-      const rect = hero.getBoundingClientRect();
-      const nextProgress = clamp(-rect.top / Math.max(rect.height, 1), 0, 1);
-      applyProgress(nextProgress);
+    const updateFromScroll = () => {
+      const anchors = resolveSectionAnchors(sectionTimeline);
+      const frame = frameFromSectionAnchors(
+        window.scrollY,
+        anchors,
+        sectionTimeline
+      );
+      applyFrame(frame);
     };
 
-    updateFromRect();
+    updateFromScroll();
 
-    if (!isInView) return;
     let frame = 0;
     const schedule = () => {
       if (frame) return;
       frame = window.requestAnimationFrame(() => {
         frame = 0;
-        updateFromRect();
+        updateFromScroll();
       });
     };
 
@@ -170,7 +280,7 @@ export default function HeroPlanet({ heroRef }: HeroPlanetProps) {
       window.removeEventListener("scroll", onScroll);
       window.removeEventListener("resize", onResize);
     };
-  }, [heroRef, isInView, prefersReducedMotion]);
+  }, [prefersReducedMotion]);
 
   useEffect(() => {
     if (!isSceneReady) return;
@@ -190,7 +300,7 @@ export default function HeroPlanet({ heroRef }: HeroPlanetProps) {
     };
   }, [isSceneReady]);
 
-  const isActive = isInView && isPageVisible;
+  const isActive = isPageVisible;
 
   return (
     <div className="hero-planet-layer" ref={layerRef} aria-hidden="true">

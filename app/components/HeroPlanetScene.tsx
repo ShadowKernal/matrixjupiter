@@ -375,7 +375,7 @@ function ProceduralPlanet({
     if (!textureReady) return;
 
     const progress = progressRef.current;
-    const fade = 1 - MathUtils.clamp((progress - 0.68) / 0.32, 0, 1);
+    const fade = 1 - MathUtils.clamp((progress - 0.9) / 0.1, 0, 1);
     const pointerX = state.pointer.x;
     const pointerY = state.pointer.y;
     const parallaxX = pointerX * (prefersReducedMotion ? 0.02 : 0.056);
@@ -395,7 +395,7 @@ function ProceduralPlanet({
     const transformLerp = prefersReducedMotion ? 0.05 : 0.08;
     core.rotation.y = MathUtils.lerp(core.rotation.y, targetRotationY, rotationLerp);
     core.rotation.x = MathUtils.lerp(core.rotation.x, -0.34 + progress * 0.28 + tiltLift, transformLerp);
-    core.position.y = MathUtils.lerp(core.position.y, -0.02 - progress * 0.24 + parallaxY, transformLerp);
+    core.position.y = MathUtils.lerp(core.position.y, -0.04 - progress * 0.46 + parallaxY, transformLerp);
     core.position.x = MathUtils.lerp(core.position.x, 0.01 - progress * 0.12 + parallaxX, transformLerp);
 
     cloud.rotation.y = core.rotation.y * 1.18 + 0.1 + cloudSpinRef.current;
